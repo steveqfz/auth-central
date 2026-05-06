@@ -1,0 +1,57 @@
+sequenceDiagram
+    autonumber
+
+    participant FE as FE Client
+    participant ClientAPI as Client API
+    participant Ory as Ory Hydra
+    participant AuthFE as Central Auth FE
+    participant AuthAPI as Central Auth Server
+
+    FE->>Ory: GET /oauth2/auth<br/>client_id, redirect_uri, scope, state, response_type=code
+    Ory-->>FE: 302 redirect to Central Auth FE<br/>login_challenge
+
+    FE->>AuthFE: Open /login?login_challenge=xxx
+    AuthFE->>AuthAPI: GET /api/auth/session<br/>login_challenge=xxx
+    AuthAPI->>Ory: GET login request<br/>login_challenge=xxx
+    Ory-->>AuthAPI: Login request<br/>client, subject?, skip?
+    AuthAPI-->>AuthFE: authenticated=true, user, login_request
+
+    AuthFE->>AuthAPI: POST /api/auth/login/accept<br/>login_challenge
+    AuthAPI->>Ory: GET login request<br/>login_challenge=xxx
+    Ory-->>AuthAPI: Login request<br/>skip?, subject?
+
+    alt Ory login can be skipped
+        AuthAPI->>Ory: Accept login request<br/>subject=existing Ory subject
+    else Ory requires login confirmation
+        AuthAPI->>AuthAPI: Resolve current Central Auth user
+        AuthAPI->>Ory: Accept login request<br/>subject=current player_id
+    end
+
+    Ory-->>AuthAPI: redirect_to
+    AuthAPI-->>AuthFE: redirect_to
+
+    AuthFE->>Ory: Browser navigates to redirect_to
+
+    alt Consent required
+        Ory-->>AuthFE: 302 redirect to Central Auth FE<br/>consent_challenge
+        AuthFE->>AuthAPI: GET /api/auth/consent<br/>consent_challenge=yyy
+        AuthAPI->>Ory: GET consent request<br/>consent_challenge=yyy
+        Ory-->>AuthAPI: Consent request<br/>client, scopes, audience
+        AuthAPI-->>AuthFE: user, consent_request
+
+        AuthFE->>AuthAPI: POST /api/auth/consent<br/>consent_challenge, grant_scope, audience
+        AuthAPI->>Ory: Accept consent request<br/>grant_scope, audience, token claims
+        Ory-->>AuthAPI: redirect_to
+        AuthAPI-->>AuthFE: redirect_to
+
+        AuthFE->>Ory: Browser navigates to redirect_to
+    else Consent skipped by Ory
+        Ory->>Ory: Continue OAuth flow
+    end
+
+    Ory-->>FE: 302 redirect to client redirect_uri<br/>code, state
+
+    FE->>ClientAPI: Send authorization code
+    ClientAPI->>Ory: POST /oauth2/token<br/>code, client credentials / PKCE verifier
+    Ory-->>ClientAPI: access_token, refresh_token, id_token
+    ClientAPI-->>FE: App session / login success
