@@ -1,0 +1,18 @@
+sequenceDiagram
+
+    participant FE as FE Client
+    participant ClientAPI as Client API
+    participant Ory as Ory Hydra
+    participant AuthFE as Central Auth FE
+    participant AuthAPI as Central Auth Server
+    autonumber
+
+    FE->>Ory: GET /oauth2/auth<br/>client_id, redirect_uri, scope, state, response_type=code
+    Ory-->>FE: 302 redirect to Central Auth FE<br/>login_challenge
+
+    FE->>AuthFE: Open /login?login_challenge=xxx
+    AuthFE->>AuthAPI: GET /api/auth/session<br/>login_challenge=xxx
+    AuthAPI->>Ory: GET login request<br/>login_challenge=xxx
+    Ory-->>AuthAPI: Login request<br/>client, requested scope, skip=false
+    AuthAPI-->>AuthFE: authenticated=false, login_request
+    AuthFE-->>FE: 302 redirect to FE
